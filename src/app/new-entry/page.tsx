@@ -1,10 +1,23 @@
 "use client";
 import { useState } from 'react';
 
+type FoodItemNutrition = {
+    foodItem: string;
+    nutritionData: any; 
+};
+
+type AnalysisResult = {
+    foodItems: string[];
+    nutritionDataResults: FoodItemNutrition[];
+    error?: string; 
+};
+
+
 export default function NewEntry() {
     const [selectedImage, setSelectedImage] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
-    const [analysisResult, setAnalysisResult] = useState<string | null | object>(null); 
+    const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+
     const [loading, setLoading] = useState<boolean>(false); 
 
     // image uploading
@@ -25,59 +38,162 @@ export default function NewEntry() {
     // FORM SUBMISSION
     const handleUpload = async () => {
         if (!selectedImage) return;
-
-        setLoading(true); // Set loading to true immediately
-
-        // Convert image to base64
+    
+        setLoading(true);
+    
+        // convert image to base64
         const reader = new FileReader();
         reader.readAsDataURL(selectedImage);
-
+    
         reader.onloadend = async () => {
             try {
                 // extract the base64 encoding
                 let base64Image = (reader.result as string).split(',')[1]; 
-
+    
                 // remove newlines and spaces from the encoding
                 base64Image = base64Image.replace(/\s/g, '');
-
-                // this creates the (formatted!) JSON payload to send to Ollama
-                const payload = {
+    
+                // **step 1: initial request to identify food items
+                const initialPayload = {
                     model: "llava-phi3",
-                    prompt: "Analyze the image and identify only the food items present. Exclude any mention of background details, table settings, or non-food items. Provide a detailed description of the type, count, and any notable characteristics of each food item, including sauces or condiments. The focus should be solely on the edible items. At the top, list the number of different food items analyzed (e.g. If given an image with eggs and apples: \"Food items analyzed: 10\"). Underneath this the food items and descriptions should be listed. Ensure there are no duplicate food items listed.",
+                    prompt: "Analyze the image and identify only the food items present. Exclude any mention of background details, table settings, or non-food items. The focus should be solely on the edible items. At the top, list the number of different food items analyzed (e.g. If given an image with eggs and apples: \"Food items analyzed: 2\"). Underneath this the food items and descriptions should be listed.",
                     stream: false,
                     images: [base64Image],
                 };
-
-                // sending image to Ollama...
-                const response = await fetch('/api/analyze-image', {
+    
+                // sending image to Ollama for initial analysis...
+                const initialResponse = await fetch('/api/analyze-image', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify(payload),
+                    body: JSON.stringify(initialPayload),
                 });
-
-                if (!response.ok) {
+    
+                if (!initialResponse.ok) {
                     throw new Error('Failed to analyze image');
                 }
+    
+                const initialResult = await initialResponse.json();
 
-                const result = await response.json();
+                console.log('Initial response:', initialResult);
+    
+                // **step 2: send second request to reformat detected food items
+                const reformattedPayload = {
+                    model: "llava-phi3",
+                    prompt: `Convert the following list of food items into a valid JSON array where each item is a string. Only return a plain JSON array with no additional characters, formatting, code blocks, or explanations. I will using these elements for a search in the FDA database, therefore elements should be concise (IMPORTANT: max 3 words), to the point, and not contain any additional information. For example: ["item1", "item2", "item3"]. Input: "${initialResult.analysis.response}"`,
+                    stream: false,
+                    images: [],
+                };
 
-                // this makes sure that the result ONLY shows the response (not the other stuff)
-                setAnalysisResult(result.analysis.response);
-            } catch (fetchError : Error | any) {
-                console.error('Error analyzing image:', fetchError);
-                setAnalysisResult({ error: fetchError.message });
+                const reformattedResponse = await fetch('/api/analyze-image', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(reformattedPayload),
+                });
+
+                if (!reformattedResponse.ok) {
+                    throw new Error('Failed to reformat food items');
+                }
+
+                const reformattedResult = await reformattedResponse.json();
+
+                console.log('Reformatted response:', reformattedResult);
+
+                // check if reformatted response has the correct structure
+                if (!reformattedResult || !reformattedResult.analysis || !reformattedResult.analysis.response) {
+                    console.error('Reformatted result does not contain expected response:', reformattedResult);
+                    setAnalysisResult({
+                        foodItems: [],
+                        nutritionDataResults: [],
+                        error: 'Unexpected format in reformatted response.',
+                    });
+                    setLoading(false);
+                    return; // exit if format no good
+                }
+
+                // CLEAN RESPONSE!!
+                let cleanedResponse = reformattedResult.analysis.response.trim();
+                cleanedResponse = cleanedResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+                cleanedResponse = cleanedResponse.replace(/\n/g, '').replace(/\r/g, '').trim();
+
+                // make sure it's a valid JSON array
+                if (!cleanedResponse.startsWith('[') || !cleanedResponse.endsWith(']')) {
+                    console.error('Cleaned response is not a valid JSON array:', cleanedResponse);
+                    setAnalysisResult({
+                        foodItems: [],
+                        nutritionDataResults: [],
+                        error: 'Cleaned response is not a valid JSON array.',
+                    });
+                    setLoading(false);
+                    return;
+                }
+
+                console.log('Final cleaned response before parsing:', cleanedResponse);
+
+                let foodItemsArray: string[] = [];
+                try {
+                    foodItemsArray = JSON.parse(cleanedResponse);
+                } catch (parseError) {
+                    console.error('Error parsing cleaned reformatted response:', parseError);
+                    console.error('Cleaned response that failed to parse:', cleanedResponse);
+                    setAnalysisResult({
+                        foodItems: [],
+                        nutritionDataResults: [],
+                        error: 'Failed to parse cleaned reformatted response.',
+                    });
+                    setLoading(false);
+                    return; // exit if parsing fail
+                }
+
+
+    
+                // fetch nutrition data for each food item in array
+                const nutritionDataPromises = foodItemsArray.map(async (foodItem: string) => {
+                    const nutritionResponse = await fetch('/api/fda-nutrition', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ foodItem }),
+                    });
+    
+                    if (!nutritionResponse.ok) {
+                        throw new Error(`Failed to fetch nutrition data for ${foodItem}`);
+                    }
+    
+                    const nutritionData = await nutritionResponse.json();
+                    return { foodItem, nutritionData };
+                });
+    
+                const nutritionDataResults = await Promise.all(nutritionDataPromises);
+    
+                // set analysis result with both image analysis and nutrition data
+                setAnalysisResult({
+                    foodItems: foodItemsArray,
+                    nutritionDataResults,
+                });
+            } catch (error: Error | any) {
+                console.error('Error processing image or fetching nutrition data:', error);
+                setAnalysisResult({
+                    foodItems: [], 
+                    nutritionDataResults: [], 
+                    error: error.message,
+                  });
             } finally {
                 setLoading(false);
             }
         };
-
+    
+        // file read error catch
         reader.onerror = (error) => {
             console.error('Error reading file:', error);
             setLoading(false);
         };
     };
+    
 
 
     return (
@@ -108,9 +224,26 @@ export default function NewEntry() {
             {analysisResult && (
                 <div className="mt-4 p-4 bg-gray-100 rounded w-full max-w-full overflow-x-auto">
                     <h2 className="text-xl mb-2">Analysis Result:</h2>
-                    <p className="whitespace-pre-line">{analysisResult.toString()}</p>
+                    {analysisResult.error ? (
+                        <p>{analysisResult.error}</p>
+                    ) : (
+                        Array.isArray(analysisResult.foodItems) && analysisResult.foodItems.length > 0 ? (
+                            analysisResult.foodItems.map((food, index) => (
+                                <div key={index} className="mb-4">
+                                    <h3 className="text-lg font-bold">Food Item: {food}</h3>
+                                    <pre className="whitespace-pre-wrap">
+                                        {JSON.stringify(analysisResult.nutritionDataResults[index]?.nutritionData, null, 2)}
+                                    </pre>
+                                </div>
+                            ))
+                        ) : (
+                            <p>No food items found.</p>
+                        )
+                    )}
                 </div>
             )}
+
+
         </div>
     );
 }
