@@ -62,27 +62,3 @@ const FoodPost = ({
 };
 
 export default FoodPost;
-
-
-// "use client";
-// import Image, { StaticImageData } from "next/image";
-
-// const FoodPost = ({ pfp, name, content } : {pfp: StaticImageData, name: string, content: string}) => {
-//     return (
-//         <div className="flex">
-//             <Image
-//                 src={pfp}
-//                 alt={name}
-//                 width={50}
-//                 height={50}
-//                 className="mr-4"
-//             />
-//             <div>
-//                 <p>{name}</p>
-//                 <p className="text-gray-500">{content}</p>
-//             </div>
-//         </div>
-//     );
-// };
-
-// export default FoodPost;

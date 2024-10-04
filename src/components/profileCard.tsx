@@ -29,9 +29,6 @@ const ProfileCard = ({ profilePicture, username, title, foodPosts }: ProfileCard
           <p className="text-gray-600 text-sm">Food Posts</p>
           <p className="text-3xl font-bold text-gray-800">{foodPosts}</p>
         </div>
-      {/* <div className="min-w-44 mx-auto bg-green-100 shadow-lg rounded-lg overflow-hidden p-10 justify-center items-center">
-        
-      </div> */}
     </div>
   );
 };

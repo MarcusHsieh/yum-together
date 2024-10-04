@@ -26,7 +26,7 @@ const Footer = () => {
             {/* front page */}
             <Button1 Label={home} altText={"Home"} href="/" />
             {/* camera page (new food entry/post) */}
-            <Button1 Label={camera} altText={"Camera"} href="/camera" />
+            <Button1 Label={camera} altText={"New entry"} href="/new-entry" />
             {/* profile page */}
             <Button1 Label={profile} altText={"Profile"} href="/1/profile" />
         </div>
