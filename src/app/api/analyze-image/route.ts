@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
         // get the response from Ollama!
         const result = await ollamaResponse.json();
 
-        // send back analysis result to the client!!
+        // send back analysis result to the client
         return NextResponse.json({ analysis: result });
     } catch (error) {
         console.error('Error communicating with Ollama:', error);
