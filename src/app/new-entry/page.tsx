@@ -56,7 +56,7 @@ export default function NewEntry() {
                 // **step 1: initial request to identify food items
                 const initialPayload = {
                     model: "llava-phi3",
-                    prompt: "Analyze the image and identify only the food items present. Exclude any mention of background details, table settings, or non-food items. The focus should be solely on the edible items. At the top, list the number of different food items analyzed (e.g. If given an image with eggs and apples: \"Food items analyzed: 2\"). Underneath this the food items and descriptions should be listed.",
+                    prompt: "Analyze the image and identify only the food items present. Only list the food items and void any additional descriptions. Exclude any mention of background details, table settings, or non-food items. The focus should be solely on the edible items. Only analyze the food items in the middle of the image. (i.e. Input: image of a burger. Output: 1. Burger (with contents inside))",
                     stream: false,
                     images: [base64Image],
                 };
@@ -81,7 +81,7 @@ export default function NewEntry() {
                 // **step 2: send second request to reformat detected food items
                 const reformattedPayload = {
                     model: "llava-phi3",
-                    prompt: `Convert the following list of food items into a valid JSON array where each item is a string. Only return a plain JSON array with no additional characters, formatting, code blocks, or explanations. I will using these elements for a search in the FDA database, therefore elements should be concise (IMPORTANT: max 3 words), to the point, and not contain any additional information. For example: ["item1", "item2", "item3"]. Input: "${initialResult.analysis.response}"`,
+                    prompt: `Convert the following list of food items into a valid JSON array where each item is a string. The result should only return a plain JSON array with no additional characters, formatting, code blocks, or explanations. I will using these elements for a search in the FDA database, therefore elements should be concise (IMPORTANT: max 3 words), to the point, and not contain any additional information. For example: ["item1", "item2", "item3"]. Input: "${initialResult.analysis.response}"`,
                     stream: false,
                     images: [],
                 };
@@ -170,7 +170,7 @@ export default function NewEntry() {
     
                 const nutritionDataResults = await Promise.all(nutritionDataPromises);
     
-                // set analysis result with both image analysis and nutrition data
+                // set analysis result with both image analysis and nutrition data (THIS IS WHAT'S OUTPUTTED TO THE USER)
                 setAnalysisResult({
                     foodItems: foodItemsArray,
                     nutritionDataResults,
@@ -232,7 +232,7 @@ export default function NewEntry() {
                                 <div key={index} className="mb-4">
                                     <h3 className="text-lg font-bold">Food Item: {food}</h3>
                                     <pre className="whitespace-pre-wrap">
-                                        {JSON.stringify(analysisResult.nutritionDataResults[index]?.nutritionData, null, 2)}
+                                        {JSON.stringify(analysisResult.nutritionDataResults[index]?.nutritionData.foods, null, 2)}
                                     </pre>
                                 </div>
                             ))
